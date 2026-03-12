@@ -1,5 +1,6 @@
 import html
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -73,7 +74,7 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
     if not has_valid_smiles(smiles):
         return '<div class="small-note">No valid structure</div>'
 
-    smiles_str = html.escape(str(smiles).strip(), quote=True)
+    smiles_str = json.dumps(str(smiles).strip())
 
     return f"""
     <div class="mol-canvas-wrap">
@@ -81,7 +82,7 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
     </div>
     <script>
     (function() {{
-        const smiles = "{smiles_str}";
+        const smiles = {smiles_str};
         const targetId = "{canvas_id}";
 
         function drawMolecule() {{
@@ -240,7 +241,7 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
         </div>
         """
 
-    smiles_str = html.escape(str(smiles).strip(), quote=True)
+    smiles_str = json.dumps(str(smiles).strip())
 
     return f"""
     <style>
@@ -261,7 +262,7 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
     </div>
     <script>
     (function() {{
-        const smiles = "{smiles_str}";
+        const smiles = {smiles_str};
         const targetId = "{canvas_id}";
 
         function drawMolecule() {{
@@ -418,3 +419,4 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
