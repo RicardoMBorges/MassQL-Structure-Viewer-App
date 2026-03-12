@@ -135,9 +135,10 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
                 smiles,
                 function(tree) {{
                     const drawer = new SmilesDrawer.Drawer({
-                        width: ...,
-                        height: ...,
-                        padding: ...,
+                        width: {width},
+                        height: {height},
+                        padding: 10,
+                        experimental: true
                         experimental: true
                     });
                     drawer.draw(tree, targetId, "light", false);
@@ -335,9 +336,10 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
                 smiles,
                 function(tree) {{
                     const drawer = new SmilesDrawer.Drawer({
-                        width: ...,
-                        height: ...,
-                        padding: ...,
+                        width: {width},
+                        height: {height},
+                        padding: 10,
+                        experimental: true
                         experimental: true
                     });
                     drawer.draw(tree, targetId, "light", false);
@@ -490,4 +492,5 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
 
