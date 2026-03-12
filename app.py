@@ -46,7 +46,7 @@ CANONICAL_NAMES = {
 
 
 def find_first_existing_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
-    existing = {c.lower(): c for c in df.columns}
+    existing = {str(c).lower().strip(): c for c in df.columns}
     for candidate in candidates:
         key = candidate.lower().strip()
         if key in existing:
@@ -80,6 +80,7 @@ def clean_text_value(value):
         return None
 
     return text
+
 
 def sanitize_smiles_for_browser(smiles):
     smiles = clean_text_value(smiles)
@@ -195,6 +196,10 @@ def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
 
     if inchikey_col:
         result["InChIKey"] = df[inchikey_col].map(clean_text_value)
+    else:
+        result["InChIKey"] = None
+
+    result["Smiles_for_browser"] = result["Smiles"].map(sanitize_smiles_for_browser)
 
     result["Structure_Status"] = result.apply(
         lambda row: (
@@ -270,7 +275,7 @@ def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
 
     for idx, row in show_df.iterrows():
         canvas_id = f"mol_canvas_{idx}"
-        img_html = smiles_to_html(row.get("Smiles"), canvas_id=canvas_id)
+        img_html = smiles_to_html(row.get("Smiles"), canvas_id=canvas_id, width=220, height=180)
 
         html_parts.append("<tr>")
         html_parts.append(f'<td class="mol-cell">{img_html}</td>')
@@ -334,13 +339,12 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
             SmilesDrawer.parse(
                 smiles,
                 function(tree) {{
-                    const drawer = new SmilesDrawer.Drawer({
+                    const drawer = new SmilesDrawer.Drawer({{
                         width: {width},
                         height: {height},
-                        padding: 10,
+                        padding: 20,
                         experimental: true
-                        experimental: true
-                    });
+                    }});
                     drawer.draw(tree, targetId, "light", false);
                 }},
                 function() {{
@@ -429,14 +433,12 @@ if uploaded_file is not None:
     st.dataframe(raw_df, use_container_width=True)
 
     result_df = prepare_result_table(raw_df)
-    result_df["Smiles_for_browser"] = result_df["Smiles"].map(sanitize_smiles_for_browser)
+
+    st.subheader("SMILES debug table")
     st.dataframe(
         result_df[["Compound_Name", "Smiles", "Smiles_for_browser", "INCHI", "Structure_Status"]],
         use_container_width=True,
     )
-    debug_df = result_df[["Compound_Name", "Smiles", "INCHI", "Structure_Status"]].copy()
-    st.subheader("SMILES debug table")
-    st.dataframe(debug_df, use_container_width=True)
 
     st.subheader("Processed annotation table")
     st.dataframe(result_df, use_container_width=True)
@@ -491,6 +493,3 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
-
-
-
