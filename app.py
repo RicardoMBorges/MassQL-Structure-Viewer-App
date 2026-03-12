@@ -86,6 +86,39 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
         const smiles = {smiles_str};
         const targetId = "{canvas_id}";
 
+        function drawMolecule() {{
+            if (typeof SmilesDrawer === "undefined") {{
+                const el = document.getElementById(targetId);
+                if (el && el.parentElement) {{
+                    el.parentElement.innerHTML = '<div class="small-note">Could not load SmilesDrawer</div>';
+                }}
+                return;
+            }}
+
+            SmilesDrawer.parse(smiles, function(tree) {{
+                const drawer = new SmilesDrawer.Drawer({{
+                    width: {width},
+                    height: {height},
+                    padding: 10
+                }});
+                drawer.draw(tree, targetId, "light", false);
+            }}, function() {{
+                const el = document.getElementById(targetId);
+                if (el && el.parentElement) {{
+                    el.parentElement.innerHTML = '<div class="small-note">Invalid SMILES</div>';
+                }}
+            }});
+        }}
+
+        if (typeof SmilesDrawer === "undefined") {{
+            setTimeout(drawMolecule, 200);
+        }} else {{
+            drawMolecule();
+        }}
+    }})();
+    </script>
+    """
+
 @st.cache_data(show_spinner=False)
 def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
     df = normalize_columns(df)
@@ -335,3 +368,4 @@ if uploaded_file is not None:
 else:
 
     st.info("Upload a MassQL result table to begin.")
+
