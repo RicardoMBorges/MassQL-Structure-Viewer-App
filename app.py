@@ -81,13 +81,33 @@ def clean_text_value(value):
 
     return text
 
+def sanitize_smiles_for_browser(smiles):
+    smiles = clean_text_value(smiles)
+    if smiles is None:
+        return None
+
+    s = smiles.strip()
+
+    # remove surrounding quotes
+    if len(s) >= 2 and ((s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")):
+        s = s[1:-1].strip()
+
+    # remove CXSMILES-like annotation block if present
+    if " |" in s:
+        s = s.split(" |", 1)[0].strip()
+
+    # remove trailing whitespace fragments
+    s = s.split()[0].strip()
+
+    return s if s else None
+
 
 def has_valid_smiles(smiles) -> bool:
     return clean_text_value(smiles) is not None
 
 
 def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) -> str:
-    smiles_clean = clean_text_value(smiles)
+    smiles_clean = sanitize_smiles_for_browser(smiles)
     if smiles_clean is None:
         return '<div class="small-note">No valid structure</div>'
 
@@ -114,11 +134,12 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
             SmilesDrawer.parse(
                 smiles,
                 function(tree) {{
-                    const drawer = new SmilesDrawer.Drawer({{
-                        width: {width},
-                        height: {height},
-                        padding: 10
-                    }});
+                    const drawer = new SmilesDrawer.Drawer({
+                        width: ...,
+                        height: ...,
+                        padding: ...,
+                        experimental: true
+                    });
                     drawer.draw(tree, targetId, "light", false);
                 }},
                 function() {{
@@ -268,7 +289,7 @@ def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
 
 def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> str:
     canvas_id = "single_molecule_canvas"
-    smiles_clean = clean_text_value(smiles)
+    smiles_clean = sanitize_smiles_for_browser(smiles)
 
     if smiles_clean is None:
         return """
@@ -313,11 +334,12 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
             SmilesDrawer.parse(
                 smiles,
                 function(tree) {{
-                    const drawer = new SmilesDrawer.Drawer({{
-                        width: {width},
-                        height: {height},
-                        padding: 20
-                    }});
+                    const drawer = new SmilesDrawer.Drawer({
+                        width: ...,
+                        height: ...,
+                        padding: ...,
+                        experimental: true
+                    });
                     drawer.draw(tree, targetId, "light", false);
                 }},
                 function() {{
@@ -406,6 +428,14 @@ if uploaded_file is not None:
     st.dataframe(raw_df, use_container_width=True)
 
     result_df = prepare_result_table(raw_df)
+    result_df["Smiles_for_browser"] = result_df["Smiles"].map(sanitize_smiles_for_browser)
+    st.dataframe(
+        result_df[["Compound_Name", "Smiles", "Smiles_for_browser", "INCHI", "Structure_Status"]],
+        use_container_width=True,
+    )
+    debug_df = result_df[["Compound_Name", "Smiles", "INCHI", "Structure_Status"]].copy()
+    st.subheader("SMILES debug table")
+    st.dataframe(debug_df, use_container_width=True)
 
     st.subheader("Processed annotation table")
     st.dataframe(result_df, use_container_width=True)
@@ -460,3 +490,4 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
