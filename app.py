@@ -134,13 +134,12 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
             SmilesDrawer.parse(
                 smiles,
                 function(tree) {{
-                    const drawer = new SmilesDrawer.Drawer({
+                    const drawer = new SmilesDrawer.Drawer({{
                         width: {width},
                         height: {height},
                         padding: 10,
                         experimental: true
-                        experimental: true
-                    });
+                    }});
                     drawer.draw(tree, targetId, "light", false);
                 }},
                 function() {{
@@ -492,5 +491,6 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
 
 
