@@ -278,8 +278,8 @@ if uploaded_file is not None:
         st.error(f"Could not read the file: {e}")
         st.stop()
 
-    st.subheader("Raw uploaded table")
-    st.dataframe(raw_df, use_container_width=True)
+    with st.expander("Raw uploaded table"):
+        st.dataframe(raw_df, use_container_width=True)
 
     result_df = prepare_result_table(raw_df)
 
