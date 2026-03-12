@@ -2,8 +2,8 @@
 # by Ricardo Moreira Borges (IPPN-UFRJ)
 
 import html
-import json
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -82,7 +82,7 @@ def clean_text_value(value):
     return text
 
 
-def sanitize_smiles_for_browser(smiles):
+def sanitize_smiles_for_url(smiles):
     smiles = clean_text_value(smiles)
     if smiles is None:
         return None
@@ -103,63 +103,41 @@ def sanitize_smiles_for_browser(smiles):
     return s if s else None
 
 
-def has_valid_smiles(smiles) -> bool:
-    return clean_text_value(smiles) is not None
+def choose_structure_identifier(smiles, inchi, inchikey):
+    smiles_clean = sanitize_smiles_for_url(smiles)
+    inchi_clean = clean_text_value(inchi)
+    inchikey_clean = clean_text_value(inchikey)
+
+    if inchikey_clean:
+        # NCI resolver accepts full Standard InChIKeys
+        return f"InChIKey={inchikey_clean}"
+
+    if inchi_clean:
+        return inchi_clean
+
+    if smiles_clean:
+        return smiles_clean
+
+    return None
 
 
-def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) -> str:
-    smiles_clean = sanitize_smiles_for_browser(smiles)
-    if smiles_clean is None:
-        return '<div class="small-note">No valid structure</div>'
-
-    smiles_str = json.dumps(smiles_clean)
-
-    return f"""
-    <div class="mol-canvas-wrap">
-        <canvas id="{canvas_id}" width="{width}" height="{height}"></canvas>
-    </div>
-    <script>
-    (function() {{
-        const smiles = {smiles_str};
-        const targetId = "{canvas_id}";
-
-        function drawMolecule() {{
-            if (typeof SmilesDrawer === "undefined") {{
-                const el = document.getElementById(targetId);
-                if (el && el.parentElement) {{
-                    el.parentElement.innerHTML = '<div class="small-note">Could not load SmilesDrawer</div>';
-                }}
-                return;
-            }}
-
-            SmilesDrawer.parse(
-                smiles,
-                function(tree) {{
-                    const drawer = new SmilesDrawer.Drawer({{
-                        width: {width},
-                        height: {height},
-                        padding: 10,
-                        experimental: true
-                    }});
-                    drawer.draw(tree, targetId, "light", false);
-                }},
-                function() {{
-                    const el = document.getElementById(targetId);
-                    if (el && el.parentElement) {{
-                        el.parentElement.innerHTML = '<div class="small-note">Invalid SMILES</div>';
-                    }}
-                }}
-            );
-        }}
-
-        if (typeof SmilesDrawer === "undefined") {{
-            setTimeout(drawMolecule, 200);
-        }} else {{
-            drawMolecule();
-        }}
-    }})();
-    </script>
+def build_nci_image_url(smiles=None, inchi=None, inchikey=None, size=300) -> str | None:
     """
+    Use NIH NCI/CADD Chemical Identifier Resolver image endpoint.
+    Documentation pattern:
+      /chemical/structure/"structure identifier"/image
+    """
+    identifier = choose_structure_identifier(smiles, inchi, inchikey)
+    if identifier is None:
+        return None
+
+    # URL-encode identifier safely
+    encoded_identifier = quote(identifier, safe="")
+    # png option is supported by the resolver's image method/options
+    return (
+        f"https://cactus.nci.nih.gov/chemical/structure/"
+        f"{encoded_identifier}/image?format=png&width={size}&height={size}"
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -199,25 +177,38 @@ def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
     else:
         result["InChIKey"] = None
 
-    result["Smiles_for_browser"] = result["Smiles"].map(sanitize_smiles_for_browser)
+    result["Smiles_for_URL"] = result["Smiles"].map(sanitize_smiles_for_url)
 
-    result["Structure_Status"] = result.apply(
+    result["Structure_Source"] = result.apply(
         lambda row: (
-            "SMILES available"
-            if has_valid_smiles(row.get("Smiles"))
+            "InChIKey"
+            if clean_text_value(row.get("InChIKey")) is not None
             else (
-                "InChI only"
+                "InChI"
                 if clean_text_value(row.get("INCHI")) is not None
-                else "Invalid / missing"
+                else (
+                    "SMILES"
+                    if clean_text_value(row.get("Smiles")) is not None
+                    else "Missing"
+                )
             )
         ),
+        axis=1,
+    )
+
+    result["Has_structure_identifier"] = result.apply(
+        lambda row: choose_structure_identifier(
+            row.get("Smiles"),
+            row.get("INCHI"),
+            row.get("InChIKey"),
+        ) is not None,
         axis=1,
     )
 
     return result
 
 
-def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
+def build_html_table(result_df: pd.DataFrame, max_rows: int = 200, image_size: int = 220) -> str:
     show_df = result_df.head(max_rows).copy()
 
     headers = [c for c in show_df.columns if c not in ["Smiles", "INCHI"]]
@@ -247,12 +238,11 @@ def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
             min-width: 240px;
             text-align: center;
         }
-        .mol-canvas-wrap {
-            width: 220px;
-            min-height: 180px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .mol-img {
+            max-width: 220px;
+            max-height: 220px;
+            object-fit: contain;
+            display: block;
             margin: 0 auto;
         }
         .small-note {
@@ -260,7 +250,6 @@ def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
             font-size: 12px;
         }
         </style>
-        <script src="https://unpkg.com/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
         """
     )
 
@@ -273,11 +262,21 @@ def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
 
     html_parts.append("</tr></thead><tbody>")
 
-    for idx, row in show_df.iterrows():
-        canvas_id = f"mol_canvas_{idx}"
-        img_html = smiles_to_html(row.get("Smiles"), canvas_id=canvas_id, width=220, height=180)
+    for _, row in show_df.iterrows():
+        image_url = build_nci_image_url(
+            smiles=row.get("Smiles"),
+            inchi=row.get("INCHI"),
+            inchikey=row.get("InChIKey"),
+            size=image_size,
+        )
 
         html_parts.append("<tr>")
+
+        if image_url is not None:
+            img_html = f'<img class="mol-img" src="{html.escape(image_url)}" alt="structure"/>'
+        else:
+            img_html = '<div class="small-note">No usable identifier</div>'
+
         html_parts.append(f'<td class="mol-cell">{img_html}</td>')
 
         for h in headers:
@@ -290,80 +289,6 @@ def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
 
     html_parts.append("</tbody></table>")
     return "".join(html_parts)
-
-
-def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> str:
-    canvas_id = "single_molecule_canvas"
-    smiles_clean = sanitize_smiles_for_browser(smiles)
-
-    if smiles_clean is None:
-        return """
-        <div style="padding:1rem; color:#666; font-size:14px;">
-            No valid molecular structure could be generated for this row.
-        </div>
-        """
-
-    smiles_str = json.dumps(smiles_clean)
-
-    return f"""
-    <style>
-    .single-mol-wrap {{
-        width: 100%;
-        min-height: {height}px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid #e5e5e5;
-        border-radius: 8px;
-        background: white;
-    }}
-    </style>
-    <script src="https://unpkg.com/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
-    <div class="single-mol-wrap">
-        <canvas id="{canvas_id}" width="{width}" height="{height}"></canvas>
-    </div>
-    <script>
-    (function() {{
-        const smiles = {smiles_str};
-        const targetId = "{canvas_id}";
-
-        function drawMolecule() {{
-            if (typeof SmilesDrawer === "undefined") {{
-                const el = document.getElementById(targetId);
-                if (el && el.parentElement) {{
-                    el.parentElement.innerHTML = '<div style="color:#666;">Could not load SmilesDrawer</div>';
-                }}
-                return;
-            }}
-
-            SmilesDrawer.parse(
-                smiles,
-                function(tree) {{
-                    const drawer = new SmilesDrawer.Drawer({{
-                        width: {width},
-                        height: {height},
-                        padding: 20,
-                        experimental: true
-                    }});
-                    drawer.draw(tree, targetId, "light", false);
-                }},
-                function() {{
-                    const el = document.getElementById(targetId);
-                    if (el && el.parentElement) {{
-                        el.parentElement.innerHTML = '<div style="color:#666;">Invalid SMILES</div>';
-                    }}
-                }}
-            );
-        }}
-
-        if (typeof SmilesDrawer === "undefined") {{
-            setTimeout(drawMolecule, 200);
-        }} else {{
-            drawMolecule();
-        }}
-    }})();
-    </script>
-    """
 
 
 # ---------------------------------------------------------
@@ -387,8 +312,11 @@ with st.expander("Expected columns", expanded=False):
         - `INCHI` or `InChI`
         - `InChIKey`
 
-        Structures are rendered from **SMILES**.  
-        **InChI** and **InChIKey** are preserved as annotation columns.
+        Structure images are retrieved using the best available identifier in this order:
+
+        1. `InChIKey`
+        2. `INCHI`
+        3. `Smiles`
         """
     )
 
@@ -402,7 +330,7 @@ with st.sidebar.expander("Expected columns", expanded=False):
     st.markdown(
         """
 Upload the CSV file exported from **"Table With Library Matches Only"** after running MassQL at https://massqlpostmn.gnps2.org/.  
-This table contains the validated library matches (including SMILES, InChI, and InChIKey), which will be used here to render the molecules as 2D chemical structures.
+This table contains the validated library matches (including SMILES, InChI, and InChIKey), which will be used here to display the structures.
         """
     )
 
@@ -434,26 +362,36 @@ if uploaded_file is not None:
 
     result_df = prepare_result_table(raw_df)
 
-    st.subheader("SMILES debug table")
+    st.subheader("Identifier debug table")
     st.dataframe(
-        result_df[["Compound_Name", "Smiles", "Smiles_for_browser", "INCHI", "Structure_Status"]],
+        result_df[
+            [
+                "Compound_Name",
+                "Smiles",
+                "Smiles_for_URL",
+                "INCHI",
+                "InChIKey",
+                "Structure_Source",
+                "Has_structure_identifier",
+            ]
+        ],
         use_container_width=True,
     )
 
     st.subheader("Processed annotation table")
     st.dataframe(result_df, use_container_width=True)
 
-    valid_count = (result_df["Structure_Status"] == "SMILES available").sum()
-    invalid_count = (result_df["Structure_Status"] == "Invalid / missing").sum()
+    valid_count = result_df["Has_structure_identifier"].sum()
+    missing_count = (~result_df["Has_structure_identifier"]).sum()
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Rows", len(result_df))
-    c2.metric("Rows with SMILES", int(valid_count))
-    c3.metric("Invalid / missing", int(invalid_count))
+    c2.metric("Rows with structure identifier", int(valid_count))
+    c3.metric("Missing identifier", int(missing_count))
 
     st.subheader("Structure table")
-    max_rows = st.slider("Maximum rows to render as molecule table", 10, 500, 100, 10)
-    html_table = build_html_table(result_df, max_rows=max_rows)
+    max_rows = st.slider("Maximum rows to render as structure table", 10, 500, 100, 10)
+    html_table = build_html_table(result_df, max_rows=max_rows, image_size=220)
     st.components.v1.html(html_table, height=700, scrolling=True)
 
     st.subheader("Single-compound browser")
@@ -469,15 +407,20 @@ if uploaded_file is not None:
     )
 
     selected_row = result_df.iloc[selected_idx]
+    image_url = build_nci_image_url(
+        smiles=selected_row.get("Smiles"),
+        inchi=selected_row.get("INCHI"),
+        inchikey=selected_row.get("InChIKey"),
+        size=600,
+    )
 
     col_a, col_b = st.columns([1, 1.3])
 
     with col_a:
-        st.components.v1.html(
-            build_single_molecule_html(selected_row.get("Smiles"), width=500, height=350),
-            height=380,
-            scrolling=False,
-        )
+        if image_url is not None:
+            st.image(image_url, caption=str(label_series.iloc[selected_idx]), use_container_width=True)
+        else:
+            st.warning("No usable identifier was found for this row.")
 
     with col_b:
         details = selected_row.to_frame(name="Value")
