@@ -326,6 +326,11 @@ uploaded_file = st.sidebar.file_uploader(
     accept_multiple_files=False,
 )
 
+
+with st.sidebar.expander("Expected columns", expanded=False):
+    st.markdown(
+        """by Ricardo Moreira Borges (IPPN-UFRJ)""")
+    
 with st.sidebar.expander("Expected columns", expanded=False):
     st.markdown(
         """
@@ -436,3 +441,4 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
