@@ -22,6 +22,8 @@ for logo_name in ["LAABio.png"]: #"logo_massQL.png",
     except Exception:
         pass
 
+st.sidebar.markdown("""by Ricardo Moreira Borges (IPPN-UFRJ)""")
+
 # ---------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------
@@ -357,3 +359,4 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
