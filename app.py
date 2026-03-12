@@ -319,15 +319,14 @@ with st.expander("Expected columns", expanded=False):
         3. `Smiles`
         """
     )
+    
+st.sidebar.markdown("""by Ricardo Moreira Borges (IPPN-UFRJ)""")
 
 uploaded_file = st.sidebar.file_uploader(
     "Upload MassQL result table",
     type=["csv", "tsv", "txt"],
     accept_multiple_files=False,
 )
-
-
-st.sidebar.markdown("""by Ricardo Moreira Borges (IPPN-UFRJ)""")
     
 with st.sidebar.expander("Expected columns", expanded=False):
     st.markdown(
@@ -439,6 +438,7 @@ if uploaded_file is not None:
 
 else:
     st.info("Upload a MassQL result table to begin.")
+
 
 
 
