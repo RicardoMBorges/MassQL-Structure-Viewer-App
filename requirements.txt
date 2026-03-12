@@ -1,3 +1,4 @@
 streamlit>=1.30
 pandas>=2.0
 pillow>=10.0
+rdkit-pypi
