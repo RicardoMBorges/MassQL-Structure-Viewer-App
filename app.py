@@ -1,5 +1,6 @@
 import html
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -73,7 +74,8 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
     if not has_valid_smiles(smiles):
         return '<div class="small-note">No valid structure</div>'
 
-    smiles_str = html.escape(str(smiles).strip(), quote=True)
+    smiles_clean = str(smiles).strip()
+    smiles_str = json.dumps(smiles_clean)
 
     return f"""
     <div class="mol-canvas-wrap">
@@ -81,42 +83,8 @@ def smiles_to_html(smiles, canvas_id: str, width: int = 220, height: int = 180) 
     </div>
     <script>
     (function() {{
-        const smiles = "{smiles_str}";
+        const smiles = {smiles_str};
         const targetId = "{canvas_id}";
-
-        function drawMolecule() {{
-            if (typeof SmilesDrawer === "undefined") {{
-                const el = document.getElementById(targetId);
-                if (el && el.parentElement) {{
-                    el.parentElement.innerHTML = '<div class="small-note">Could not load SmilesDrawer</div>';
-                }}
-                return;
-            }}
-
-            SmilesDrawer.parse(smiles, function(tree) {{
-                const drawer = new SmilesDrawer.Drawer({{
-                    width: {width},
-                    height: {height},
-                    padding: 10
-                }});
-                drawer.draw(tree, targetId, "light", false);
-            }}, function() {{
-                const el = document.getElementById(targetId);
-                if (el && el.parentElement) {{
-                    el.parentElement.innerHTML = '<div class="small-note">Invalid SMILES</div>';
-                }}
-            }});
-        }}
-
-        if (typeof SmilesDrawer === "undefined") {{
-            setTimeout(drawMolecule, 200);
-        }} else {{
-            drawMolecule();
-        }}
-    }})();
-    </script>
-    """
-
 
 @st.cache_data(show_spinner=False)
 def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -138,11 +106,13 @@ def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
     if name_col:
         result["Compound_Name"] = df[name_col]
     if smiles_col:
-        result["Smiles"] = df[smiles_col]
+        result["Smiles"] = df[smiles_col].astype(str).str.strip()
+        result.loc[result["Smiles"].isin(["", "nan", "None", "NaN", "null", "NULL"]), "Smiles"] = None
     else:
         result["Smiles"] = None
     if inchi_col:
-        result["INCHI"] = df[inchi_col]
+        result["INCHI"] = df[inchi_col].astype(str).str.strip()
+        result.loc[result["INCHI"].isin(["", "nan", "None", "NaN", "null", "NULL"]), "INCHI"] = None
     else:
         result["INCHI"] = None
     if inchikey_col:
@@ -150,7 +120,7 @@ def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
 
     result["Structure_Status"] = result.apply(
         lambda row: (
-            "OK"
+            "SMILES available"
             if has_valid_smiles(row.get("Smiles"))
             else ("InChI only" if pd.notna(row.get("INCHI")) and str(row.get("INCHI")).strip() else "Invalid / missing")
         ),
@@ -158,77 +128,6 @@ def prepare_result_table(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return result
-
-
-def build_html_table(result_df: pd.DataFrame, max_rows: int = 200) -> str:
-    show_df = result_df.head(max_rows).copy()
-
-    headers = [c for c in show_df.columns if c not in ["Smiles", "INCHI"]]
-    html_parts = []
-    html_parts.append(
-        """
-        <style>
-        .mol-table {
-            border-collapse: collapse;
-            width: 100%;
-            font-size: 14px;
-        }
-        .mol-table th, .mol-table td {
-            border: 1px solid #d9d9d9;
-            padding: 8px;
-            text-align: left;
-            vertical-align: middle;
-        }
-        .mol-table th {
-            background-color: #f4f4f4;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
-        .mol-cell {
-            min-width: 240px;
-            text-align: center;
-        }
-        .mol-canvas-wrap {
-            width: 220px;
-            min-height: 180px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto;
-        }
-        .small-note {
-            color: #666;
-            font-size: 12px;
-        }
-        </style>
-        <script src="https://unpkg.com/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
-        """
-    )
-    html_parts.append('<table class="mol-table">')
-    html_parts.append("<thead><tr>")
-    html_parts.append("<th>Structure</th>")
-    for h in headers:
-        html_parts.append(f"<th>{html.escape(str(h))}</th>")
-    html_parts.append("</tr></thead><tbody>")
-
-    for idx, row in show_df.iterrows():
-        canvas_id = f"mol_canvas_{idx}"
-        img_html = smiles_to_html(row.get("Smiles"), canvas_id=canvas_id)
-
-        html_parts.append("<tr>")
-        html_parts.append(f'<td class="mol-cell">{img_html}</td>')
-
-        for h in headers:
-            value = row.get(h, "")
-            if pd.isna(value):
-                value = ""
-            html_parts.append(f"<td>{html.escape(str(value))}</td>")
-
-        html_parts.append("</tr>")
-
-    html_parts.append("</tbody></table>")
-    return "".join(html_parts)
 
 
 def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> str:
@@ -240,7 +139,24 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
         </div>
         """
 
-    smiles_str = html.escape(str(smiles).strip(), quote=True)
+    smiles_clean = str(smiles).strip()
+    smiles_str = json.dumps(smiles_clean)
+
+    return f"""
+
+
+def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> str:
+    canvas_id = "single_molecule_canvas"
+    if not has_valid_smiles(smiles):
+        return """
+        <div style="padding:1rem; color:#666; font-size:14px;">
+            No valid molecular structure could be generated for this row.
+        </div>
+        """
+
+    smiles_clean = str(smiles).strip()
+    smiles_str = json.dumps(smiles_clean)
+    const smiles = {smiles_str};
 
     return f"""
     <style>
@@ -261,7 +177,7 @@ def build_single_molecule_html(smiles, width: int = 500, height: int = 350) -> s
     </div>
     <script>
     (function() {{
-        const smiles = "{smiles_str}";
+        const smiles = {smiles_str};
         const targetId = "{canvas_id}";
 
         function drawMolecule() {{
@@ -369,7 +285,7 @@ if uploaded_file is not None:
     st.subheader("Processed annotation table")
     st.dataframe(result_df, use_container_width=True)
 
-    valid_count = (result_df["Structure_Status"] == "OK").sum()
+    valid_count = (result_df["Structure_Status"] == "SMILES available").sum()
     invalid_count = (result_df["Structure_Status"] != "OK").sum()
 
     c1, c2, c3 = st.columns(3)
@@ -417,4 +333,5 @@ if uploaded_file is not None:
     )
 
 else:
+
     st.info("Upload a MassQL result table to begin.")
