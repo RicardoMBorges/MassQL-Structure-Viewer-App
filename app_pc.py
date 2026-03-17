@@ -121,36 +121,38 @@ def guess_label_column(df: pd.DataFrame, exclude_cols: list[str] | None = None) 
 
 @st.cache_data(show_spinner=False)
 def load_table(uploaded_file) -> pd.DataFrame:
-    name = uploaded_file.name.lower()
+    """
+    Robust loader for CSV/TSV/TXT files.
+    Tries delimiter auto-detection first, then common separators.
+    """
+    candidate_separators = [None, ",", ";", "\t", "|"]
 
-    # try common formats with fallbacks
-    if name.endswith(".csv"):
+    best_df = None
+    best_ncols = 0
+
+    for sep in candidate_separators:
         try:
             uploaded_file.seek(0)
-            return pd.read_csv(uploaded_file)
-        except Exception:
-            try:
-                uploaded_file.seek(0)
-                return pd.read_csv(uploaded_file, sep=";")
-            except Exception:
-                uploaded_file.seek(0)
-                return pd.read_csv(uploaded_file, sep="\t")
 
-    elif name.endswith(".tsv") or name.endswith(".txt"):
-        try:
-            uploaded_file.seek(0)
-            return pd.read_csv(uploaded_file, sep="\t")
-        except Exception:
-            try:
-                uploaded_file.seek(0)
-                return pd.read_csv(uploaded_file, sep=";")
-            except Exception:
-                uploaded_file.seek(0)
-                return pd.read_csv(uploaded_file)
+            if sep is None:
+                df = pd.read_csv(uploaded_file, sep=None, engine="python")
+            else:
+                df = pd.read_csv(uploaded_file, sep=sep)
 
-    # final generic fallback
-    uploaded_file.seek(0)
-    return pd.read_csv(uploaded_file)
+            if df.shape[1] > best_ncols:
+                best_df = df
+                best_ncols = df.shape[1]
+
+            if df.shape[1] > 1:
+                return df
+
+        except Exception:
+            continue
+
+    if best_df is not None:
+        return best_df
+
+    raise ValueError("Could not parse the uploaded file with common delimiters.")
 
 
 @st.cache_data(show_spinner=False)
